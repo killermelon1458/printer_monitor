@@ -1,0 +1,24 @@
+[complete]
+keywords = ["finished print", "print completed", "done"]
+notify = true
+log = true
+
+[pause]
+keywords = ["pause print", "runout", "filament sensor"]
+notify = true
+log = true
+
+[resume]
+keywords = ["print resumed", "print started"]
+notify = false
+log = true
+
+[error]
+keywords = ["shutdown", "klipper state: shutdown"]
+notify = true
+log = true
+
+[custom]
+keywords = ["thermal runaway", "skipping steps", "clogged nozzle"]
+notify = true
+log = true

@@ -1,0 +1,162 @@
+#printer_monitor.py
+import time
+import socket
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+from datetime import datetime
+from pythonEmailNotify import EmailSender
+
+# ==== CONFIG ====
+LOG_FILE = Path("/home/sovol/printer_data/logs/klippy.log")
+PAUSE_KEYWORDS = ["action: pause", "runout", "filament Sensor", "pause print"]
+RESUME_KEYWORDS = ["resumed", "print started", "print resumming"]
+COMPLETE_KEYWORDS = [
+    "print complete",
+    "finished sd card print",
+    "print finished",
+    "print completed",
+    "finished print"
+]
+ERROR_KEYWORDS = ["klipper state: shutdown", "shutdown"]
+
+# =================
+
+# Load environment variables from ~/.printer_monitor.env
+load_dotenv(dotenv_path=os.path.expanduser("~/printer_monitor/.printer_monitor.env"))
+
+# Email sender setup
+emailer = EmailSender(
+    smtp_server="smtp.gmail.com",
+    port=587,
+    login=os.environ["SMTP_EMAIL"],
+    password=os.environ["SMTP_PASS"],
+    default_recipient=os.environ["SMTP_TO"]
+)
+
+# Get system info
+
+import socket
+import getpass
+USER = getpass.getuser()
+HOSTNAME = socket.gethostname()
+DEVICE_NAME = f"{USER}@{HOSTNAME}"
+
+
+def get_local_ip():
+    try:
+        # Doesn't need to actually connect, just forces a routing decision
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "Unavailable"
+
+LOCAL_IP = get_local_ip()
+
+
+def current_time_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def monitor_klipper_log():
+    print("📡 Monitoring Klipper log for pause and completion events...")
+
+    paused_sent = False
+    complete_sent = False
+
+    try:
+        with LOG_FILE.open("r") as log:
+            log.seek(0, 2)  # Go to end of file
+
+            while True:
+                line = log.readline()
+                if not line:
+                    time.sleep(0.5)
+                    continue
+
+                line_lower = line.lower()
+                #print(f">> {line.strip()}")
+ 
+                # === Detect Print Complete ===
+                if any(kw in line_lower for kw in COMPLETE_KEYWORDS) and not complete_sent:
+                    subject = "✅ Klipper Print Finished"
+                    body = f"""Your printer has completed a print.
+
+Device: {DEVICE_NAME}
+IP: {LOCAL_IP}
+Time: {current_time_str()}
+
+Log line:
+{line.strip()}
+"""
+                    emailer.sendEmail(subject, body)
+                    
+                    paused_sent = False  # Reset pause flag in case a new print starts
+                    return
+
+                # === Detect Pause ===
+                elif any(kw in line_lower for kw in PAUSE_KEYWORDS) and not paused_sent:
+                    reason = "Unknown"
+                    if "runout" in line_lower:
+                        reason = "Filament runout detected"
+                    elif "action: pause" in line_lower:
+                        reason = "Klipper pause command"
+
+                    subject = "🛑 Klipper Print Paused"
+                    body = f"""Your printer has paused.
+
+Device: {DEVICE_NAME}
+IP: {LOCAL_IP}
+Time: {current_time_str()}
+
+Likely reason: {reason}
+
+Log line:
+{line.strip()}
+"""
+                    emailer.sendEmail(subject, body)
+                    paused_sent = True
+                    complete_sent = False  # If it paused again, the print clearly isn't finished
+
+                # === Reset Pause State if Print Resumed ===
+                elif any(kw in line_lower for kw in RESUME_KEYWORDS):
+                    paused_sent = False
+
+                elif any(kw in line_lower for kw in ERROR_KEYWORDS):
+                    print("[❌] Shutdown detected — waiting 5 seconds to collect related log lines...")
+                    shutdown_lines = [line.strip()]
+
+                    end_time = time.time() + 5
+                    while time.time() < end_time:
+                        next_line = log.readline()
+                        if not next_line:
+                            time.sleep(0.1)
+                            continue
+                        if "shutdown" in next_line.lower():
+                            shutdown_lines.append(next_line.strip())
+
+                    subject = "❌ Klipper Print Failed"
+                    body = f"""Your printer has stopped due to an error.
+
+Device: {DEVICE_NAME}
+IP: {LOCAL_IP}
+Time: {current_time_str()}
+
+Collected log lines:
+{chr(10).join(shutdown_lines)}
+"""
+                    emailer.sendEmail(subject, body)
+                    print("[❌] Error report email sent — exiting monitor.")
+                    return
+
+
+
+    except Exception as e:
+        print("❌ Exception occurred in monitoring loop.")
+        emailer.sendException(e)
+
+if __name__ == "__main__":
+    monitor_klipper_log()
+

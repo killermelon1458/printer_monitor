@@ -1,0 +1,3 @@
+[submodule "email_notify"]
+	path = email_notify
+	url = https://github.com/killermelon1458/PythonEmailNotify.git

@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 from datetime import datetime
 import toml  # Requires Python 3.11+ or install via pip install toml for older versions
-from pythonEmailNotify import EmailSender
+from email_notify.pythonEmailNotify import EmailSender
+
 
 print("Printer monitor starting!", flush=True)
 

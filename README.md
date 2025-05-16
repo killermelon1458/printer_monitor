@@ -133,13 +133,13 @@ pgrep -fc printer_monitor.py
 ### See event log:
 
 ```bash
-tail -n 50 /home/sovol/printer_monitor/monitor_events.log
+tail -n 50 /home/your_username/printer_monitor/monitor_events.log
 ```
 
 ### See debug/error output:
 
 ```bash
-tail -n 50 /home/sovol/printer_monitor/debug_output.log
+tail -n 50 /home/your_username/printer_monitor/debug_output.log
 ```
 
 ---
